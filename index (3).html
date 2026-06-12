@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Meter Excel Generator — AMI / MDM Bulk Upload Utility</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  /* ── Reset & Base ─────────────────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:          #0F1623;
+    --surface:     #161E2E;
+    --card:        #1C2539;
+    --card-border: #263045;
+    --input-bg:    #111827;
+    --accent:      #3B82F6;
+    --accent-h:    #2563EB;
+    --success:     #22C55E;
+    --danger:      #EF4444;
+    --warning:     #F59E0B;
+    --text:        #F1F5F9;
+    --muted:       #94A3B8;
+    --radius:      12px;
+    --font-mono:   'Courier New', monospace;
+  }
+
+  [data-theme="light"] {
+    --bg:          #F0F4FA;
+    --surface:     #E8EEF8;
+    --card:        #FFFFFF;
+    --card-border: #CBD5E1;
+    --input-bg:    #F8FAFC;
+    --text:        #0F172A;
+    --muted:       #64748B;
+  }
+
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    font-size: 14px;
+    transition: background .25s, color .25s;
+  }
+
+  /* ── Top Bar ─────────────────────────────────────────────────── */
+  .topbar {
+    background: var(--card);
+    border-bottom: 1px solid var(--card-border);
+    padding: 0 24px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .topbar-title {
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: .4px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .topbar-title span { color: var(--accent); }
+
+  .theme-toggle {
+    display: flex;
+    background: var(--input-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .theme-toggle button {
+    background: transparent;
+    border: none;
+    color: var(--muted);
+    padding: 6px 14px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: background .2s, color .2s;
+  }
+  .theme-toggle button.active {
+    background: var(--accent);
+    color: #fff;
+  }
+
+  /* ── Layout ──────────────────────────────────────────────────── */
+  .main {
+    display: grid;
+    grid-template-columns: 1fr 420px;
+    gap: 16px;
+    padding: 20px 24px 24px;
+    max-width: 1300px;
+    margin: 0 auto;
+  }
+  @media (max-width: 900px) {
+    .main { grid-template-columns: 1fr; }
+  }
+
+  /* ── Card ─────────────────────────────────────────────────────── */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius);
+    padding: 16px;
+  }
+
+  .section-label {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  /* ── Meter Input ─────────────────────────────────────────────── */
+  .left-col { display: flex; flex-direction: column; gap: 14px; }
+
+  .meter-box-wrap { position: relative; }
+  #meterInput {
+    width: 100%;
+    height: 340px;
+    background: var(--input-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 10px;
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    padding: 14px;
+    resize: vertical;
+    outline: none;
+    transition: border-color .2s;
+    line-height: 1.6;
+  }
+  #meterInput:focus { border-color: var(--accent); }
+  #meterInput::placeholder { color: var(--muted); }
+
+  .meter-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 8px;
+  }
+  .live-count {
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .live-count strong { color: var(--accent); font-size: 15px; }
+
+  .pill {
+    background: var(--input-bg);
+    border: 1px solid var(--card-border);
+    color: var(--muted);
+    font-size: 11px;
+    border-radius: 20px;
+    padding: 3px 10px;
+  }
+
+  /* ── Stat Badges ─────────────────────────────────────────────── */
+  .badges {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+  }
+  .badge {
+    background: var(--card);
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius);
+    padding: 14px 12px 12px;
+    text-align: center;
+  }
+  .badge-label {
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 6px;
+    font-weight: 600;
+    letter-spacing: .5px;
+    text-transform: uppercase;
+  }
+  .badge-value {
+    font-size: 24px;
+    font-weight: 800;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+  }
+  #badgeFiles .badge-value { color: var(--accent); }
+
+  /* ── Right column ─────────────────────────────────────────────── */
+  .right-col { display: flex; flex-direction: column; gap: 14px; }
+
+  /* ── Fields ──────────────────────────────────────────────────── */
+  .field-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .field label {
+    display: block;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--muted);
+    letter-spacing: .5px;
+    text-transform: uppercase;
+    margin-bottom: 5px;
+  }
+  .field input {
+    width: 100%;
+    background: var(--input-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 13px;
+    padding: 9px 12px;
+    outline: none;
+    transition: border-color .2s;
+  }
+  .field input:focus { border-color: var(--accent); }
+  .field input::placeholder { color: var(--muted); opacity: .6; }
+
+  /* ── Slider ──────────────────────────────────────────────────── */
+  .slider-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .slider-val {
+    font-size: 20px;
+    font-weight: 800;
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+  }
+
+  input[type=range] {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 6px;
+    background: var(--input-bg);
+    border-radius: 3px;
+    outline: none;
+    cursor: pointer;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: 3px solid var(--bg);
+    box-shadow: 0 0 0 2px var(--accent);
+    transition: box-shadow .15s;
+  }
+  input[type=range]::-webkit-slider-thumb:hover {
+    box-shadow: 0 0 0 5px rgba(59,130,246,.25);
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: 3px solid var(--bg);
+    cursor: pointer;
+  }
+
+  .tick-row {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 6px;
+  }
+  .tick-row span { font-size: 10px; color: var(--muted); }
+
+  /* ── Folder ───────────────────────────────────────────────────── */
+  .folder-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .folder-row input {
+    flex: 1;
+    background: var(--input-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 8px;
+    color: var(--muted);
+    font-size: 12px;
+    padding: 9px 12px;
+    outline: none;
+    font-style: italic;
+  }
+
+  /* ── Progress ─────────────────────────────────────────────────── */
+  .progress-wrap { display: none; }
+  .progress-wrap.visible { display: block; }
+  .progress-bar-bg {
+    background: var(--input-bg);
+    border-radius: 6px;
+    height: 10px;
+    overflow: hidden;
+    margin-bottom: 6px;
+  }
+  .progress-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--success));
+    border-radius: 6px;
+    width: 0%;
+    transition: width .1s;
+  }
+  .progress-text { font-size: 12px; color: var(--muted); }
+
+  /* ── Buttons ─────────────────────────────────────────────────── */
+  .btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+  .btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    border: none;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 13px 0;
+    cursor: pointer;
+    transition: background .2s, transform .1s, opacity .2s;
+    letter-spacing: .3px;
+  }
+  .btn:active { transform: scale(.98); }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+
+  .btn-primary {
+    background: var(--accent);
+    color: #fff;
+  }
+  .btn-primary:hover:not(:disabled) { background: var(--accent-h); }
+
+  .btn-ghost {
+    background: var(--input-bg);
+    color: var(--muted);
+    border: 1px solid var(--card-border);
+  }
+  .btn-ghost:hover:not(:disabled) {
+    background: var(--card-border);
+    color: var(--text);
+  }
+
+  /* ── Toast / Modal ────────────────────────────────────────────── */
+  .overlay {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,.55);
+    z-index: 200;
+    align-items: center;
+    justify-content: center;
+  }
+  .overlay.show { display: flex; }
+
+  .modal {
+    background: var(--card);
+    border: 1px solid var(--card-border);
+    border-radius: 16px;
+    padding: 32px 36px;
+    max-width: 440px;
+    width: 90%;
+    text-align: center;
+  }
+  .modal-icon { font-size: 48px; margin-bottom: 12px; }
+  .modal h2 { font-size: 20px; margin-bottom: 16px; }
+  .modal-stat {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--card-border);
+    font-size: 13px;
+  }
+  .modal-stat:last-of-type { border: none; }
+  .modal-stat strong { color: var(--accent); }
+  .modal .btn { margin-top: 20px; width: 100%; }
+
+  /* ── Status bar ───────────────────────────────────────────────── */
+  .statusbar {
+    background: var(--card);
+    border-top: 1px solid var(--card-border);
+    padding: 6px 24px;
+    font-size: 12px;
+    color: var(--muted);
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+  }
+  .statusbar span { color: var(--success); }
+
+  body { padding-bottom: 36px; }
+
+  /* ── Info note ────────────────────────────────────────────────── */
+  .info-note {
+    background: rgba(59,130,246,.08);
+    border: 1px solid rgba(59,130,246,.2);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.6;
+  }
+  .info-note strong { color: var(--accent); }
+</style>
+</head>
+<body data-theme="dark">
+
+<!-- ── Top Bar ──────────────────────────────────────────────────── -->
+<header class="topbar">
+  <div class="topbar-title">
+    ⚡ <span>METER</span> EXCEL GENERATOR
+    <small style="font-weight:400;color:var(--muted);margin-left:6px">AMI / MDM Bulk Upload Utility</small>
+  </div>
+  <div class="theme-toggle">
+    <button class="active" onclick="setTheme('dark')">🌙 Dark</button>
+    <button onclick="setTheme('light')">☀️ Light</button>
+  </div>
+</header>
+
+<!-- ── Main ─────────────────────────────────────────────────────── -->
+<div class="main">
+
+  <!-- LEFT COLUMN -->
+  <div class="left-col">
+
+    <!-- Meter Input -->
+    <div>
+      <div class="section-label">📋 Meter Numbers</div>
+      <div class="card" style="padding:14px">
+        <textarea id="meterInput"
+          placeholder="Paste meter numbers here — one per line.&#10;&#10;Example:&#10;1234567890&#10;1234567891&#10;1234567892&#10;&#10;Supports 1 lakh+ meters."
+          oninput="onMeterChange()" spellcheck="false"></textarea>
+        <div class="meter-footer">
+          <div class="live-count">Total meters: <strong id="meterCount">0</strong></div>
+          <div class="pill" id="dupNote">✓ Duplicates auto-removed</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Stat Badges -->
+    <div class="badges">
+      <div class="badge" id="badgeTotal">
+        <div class="badge-label">Total Meters</div>
+        <div class="badge-value" id="bTotal">0</div>
+      </div>
+      <div class="badge">
+        <div class="badge-label">Rows Per File</div>
+        <div class="badge-value" id="bRows">5,000</div>
+      </div>
+      <div class="badge" id="badgeFiles">
+        <div class="badge-label">Files To Generate</div>
+        <div class="badge-value" id="bFiles">0</div>
+      </div>
+    </div>
+
+    <!-- Info note -->
+    <div class="info-note">
+      💡 Files are generated in your browser and downloaded as a <strong>ZIP archive</strong>.
+      No data is uploaded to any server — everything runs locally in your browser.
+    </div>
+
+  </div>
+
+  <!-- RIGHT COLUMN -->
+  <div class="right-col">
+
+    <!-- Command Parameters -->
+    <div>
+      <div class="section-label">⚙️ Command Parameters</div>
+      <div class="card">
+        <div class="field-grid">
+          <div class="field">
+            <label>CommandId</label>
+            <input id="fCommandId" placeholder="e.g. RELAY_CTRL" />
+          </div>
+          <div class="field">
+            <label>CommandValue</label>
+            <input id="fCommandValue" placeholder="e.g. 0x01" />
+          </div>
+          <div class="field">
+            <label>fwIdentification</label>
+            <input id="fFwIdent" placeholder="e.g. FW_2.3.1" />
+          </div>
+          <div class="field">
+            <label>TemplateId</label>
+            <input id="fTemplateId" placeholder="e.g. TPL_001" />
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Rows Per File Slider -->
+    <div>
+      <div class="section-label">📊 Rows Per File</div>
+      <div class="card">
+        <div class="slider-header">
+          <span style="color:var(--muted);font-size:13px">Rows per Excel file:</span>
+          <span class="slider-val" id="sliderVal">5,000</span>
+        </div>
+        <input type="range" id="rowsSlider"
+          min="0" max="20000" step="1000" value="5000"
+          oninput="onSlider(this.value)" />
+        <div class="tick-row">
+          <span>0</span><span>5K</span><span>10K</span><span>15K</span><span>20K</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Output note -->
+    <div>
+      <div class="section-label">📁 Output</div>
+      <div class="card">
+        <div class="folder-row">
+          <input type="text" value="Downloads as ZIP — auto-named with timestamp" readonly />
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:8px">
+          📦 All Excel files are bundled into <strong style="color:var(--text)">MeterExport_[timestamp].zip</strong> and saved to your Downloads folder.
+        </div>
+      </div>
+    </div>
+
+    <!-- Progress -->
+    <div class="progress-wrap" id="progressWrap">
+      <div class="progress-bar-bg">
+        <div class="progress-bar-fill" id="progressFill"></div>
+      </div>
+      <div class="progress-text" id="progressText">Preparing…</div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="btn-row">
+      <button class="btn btn-primary" id="genBtn" onclick="startGeneration()">
+        ⚡ Generate Excel Files
+      </button>
+      <button class="btn btn-ghost" onclick="clearAll()">
+        🗑 Clear All
+      </button>
+    </div>
+
+  </div>
+</div>
+
+<!-- ── Success Modal ─────────────────────────────────────────────── -->
+<div class="overlay" id="overlay" onclick="closeModal(event)">
+  <div class="modal">
+    <div class="modal-icon">🎉</div>
+    <h2>Generation Complete!</h2>
+    <div class="modal-stat">
+      <span>Total Meters Processed</span>
+      <strong id="mTotal">—</strong>
+    </div>
+    <div class="modal-stat">
+      <span>Total Files Generated</span>
+      <strong id="mFiles">—</strong>
+    </div>
+    <div class="modal-stat">
+      <span>Rows Per File</span>
+      <strong id="mRows">—</strong>
+    </div>
+    <div class="modal-stat">
+      <span>Output</span>
+      <strong id="mOutput">ZIP downloaded</strong>
+    </div>
+    <button class="btn btn-primary" onclick="closeModal()">✓ Done</button>
+  </div>
+</div>
+
+<!-- ── Status Bar ─────────────────────────────────────────────────── -->
+<div class="statusbar" id="statusBar">
+  <span>Ready</span> — paste meter numbers to begin.
+</div>
+
+<!-- ── SheetJS CDN fallback + JSZip ─────────────────────────────── -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+<script>
+/* ════════════════════════════════════════════════════════════════
+   State
+════════════════════════════════════════════════════════════════ */
+let rowsPerFile = 5000;
+let meterCount  = 0;
+let isGenerating = false;
+
+/* ════════════════════════════════════════════════════════════════
+   Theme
+════════════════════════════════════════════════════════════════ */
+function setTheme(mode) {
+  document.body.setAttribute('data-theme', mode);
+  document.querySelectorAll('.theme-toggle button').forEach((b, i) => {
+    b.classList.toggle('active', (mode === 'dark' && i === 0) || (mode === 'light' && i === 1));
+  });
+}
+
+/* ════════════════════════════════════════════════════════════════
+   Meter input
+════════════════════════════════════════════════════════════════ */
+function onMeterChange() {
+  const raw = document.getElementById('meterInput').value;
+  const lines = [...new Set(
+    raw.split('\n').map(l => l.trim()).filter(Boolean)
+  )];
+  meterCount = lines.length;
+  document.getElementById('meterCount').textContent = fmt(meterCount);
+  updateSummary();
+}
+
+/* ════════════════════════════════════════════════════════════════
+   Slider
+════════════════════════════════════════════════════════════════ */
+function onSlider(val) {
+  rowsPerFile = Math.max(1000, Math.round(val / 1000) * 1000);
+  document.getElementById('rowsSlider').value = rowsPerFile;
+  document.getElementById('sliderVal').textContent = fmt(rowsPerFile);
+  updateSummary();
+}
+
+/* ════════════════════════════════════════════════════════════════
+   Summary badges
+════════════════════════════════════════════════════════════════ */
+function updateSummary() {
+  const files = rowsPerFile > 0 ? Math.ceil(meterCount / rowsPerFile) : 0;
+  document.getElementById('bTotal').textContent = fmt(meterCount);
+  document.getElementById('bRows').textContent  = fmt(rowsPerFile);
+  document.getElementById('bFiles').textContent = fmt(files);
+}
+
+function fmt(n) {
+  return Number(n).toLocaleString();
+}
+
+/* ════════════════════════════════════════════════════════════════
+   Clear All
+════════════════════════════════════════════════════════════════ */
+function clearAll() {
+  document.getElementById('meterInput').value = '';
+  ['fCommandId','fCommandValue','fFwIdent','fTemplateId'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+  meterCount = 0;
+  document.getElementById('meterCount').textContent = '0';
+  setProgress(0, '');
+  document.getElementById('progressWrap').classList.remove('visible');
+  updateSummary();
+  setStatus('<span>Ready</span> — paste meter numbers to begin.');
+}
+
+/* ════════════════════════════════════════════════════════════════
+   Validation
+════════════════════════════════════════════════════════════════ */
+function validate() {
+  const errors = [];
+  if (meterCount === 0) errors.push('No meter numbers found in the input area.');
+  if (rowsPerFile < 1000) errors.push('Rows Per File must be at least 1,000.');
+  return errors;
+}
+
+/* ════════════════════════════════════════════════════════════════
+   Generation
+════════════════════════════════════════════════════════════════ */
+async function startGeneration() {
+  if (isGenerating) return;
+
+  const errors = validate();
+  if (errors.length) {
+    alert('⚠️ Validation Error\n\n' + errors.map(e => '• ' + e).join('\n'));
+    return;
+  }
+
+  isGenerating = true;
+  const btn = document.getElementById('genBtn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Generating…';
+
+  // Small delay so UI repaints
+  await sleep(30);
+
+  try {
+    await generateFiles();
+  } catch(e) {
+    console.error(e);
+    alert('❌ Generation failed:\n' + e.message);
+    setStatus('❌ Generation failed.');
+  } finally {
+    isGenerating = false;
+    btn.disabled = false;
+    btn.innerHTML = '⚡ Generate Excel Files';
+  }
+}
+
+async function generateFiles() {
+  // Gather clean meters
+  const raw = document.getElementById('meterInput').value;
+  const meters = [...new Set(
+    raw.split('\n').map(l => l.trim()).filter(Boolean)
+  )];
+
+  const cmdId   = document.getElementById('fCommandId').value.trim();
+  const cmdVal  = document.getElementById('fCommandValue').value.trim();
+  const fwIdent = document.getElementById('fFwIdent').value.trim();
+  const tplId   = document.getElementById('fTemplateId').value.trim();
+
+  const total    = meters.length;
+  const numFiles = Math.ceil(total / rowsPerFile);
+  const ts       = timestamp();
+  const zipName  = `MeterExport_${ts}.zip`;
+
+  const wrap = document.getElementById('progressWrap');
+  wrap.classList.add('visible');
+  setStatus(`⚙️ Generating ${numFiles} file(s)…`);
+
+  const zip = new JSZip();
+
+  for (let i = 0; i < numFiles; i++) {
+    const chunk  = meters.slice(i * rowsPerFile, (i + 1) * rowsPerFile);
+
+    // Build worksheet data
+    const wsData = [
+      ['MeterNo', 'CommandId', 'CommandValue', 'fwIdentification', 'TemplateId']
+    ];
+    for (const m of chunk) {
+      wsData.push([m, cmdId, cmdVal, fwIdent, tplId]);
+    }
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+    // Column widths
+    ws['!cols'] = [
+      {wch: 20}, {wch: 18}, {wch: 18}, {wch: 20}, {wch: 16}
+    ];
+
+    // Header style (bold)
+    const headerKeys = ['A1','B1','C1','D1','E1'];
+    headerKeys.forEach(k => {
+      if (ws[k]) ws[k].s = { font: { bold: true } };
+    });
+
+    XLSX.utils.book_append_sheet(wb, ws, 'MeterData');
+
+    // Generate binary
+    const xlsxBinary = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    zip.file(`Output_${i + 1}.xlsx`, xlsxBinary);
+
+    // Update progress
+    const pct = Math.round(((i + 1) / numFiles) * 100);
+    setProgress(pct / 100, `Writing file ${i + 1} / ${numFiles} — ${pct}% complete`);
+
+    // Yield to UI every 5 files
+    if (i % 5 === 0) await sleep(0);
+  }
+
+  setStatus('📦 Compressing ZIP…');
+  setProgress(1, 'Compressing ZIP archive…');
+  await sleep(20);
+
+  const zipBlob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
+  downloadBlob(zipBlob, zipName);
+
+  setProgress(1, `✅ Done — ${numFiles} file(s) saved as ${zipName}`);
+  setStatus(`✅ ${numFiles} file(s) generated and downloaded.`);
+
+  showModal(total, numFiles, rowsPerFile);
+}
+
+/* ════════════════════════════════════════════════════════════════
+   Helpers
+════════════════════════════════════════════════════════════════ */
+function setProgress(ratio, text) {
+  document.getElementById('progressFill').style.width = (ratio * 100) + '%';
+  document.getElementById('progressText').textContent  = text;
+}
+
+function setStatus(html) {
+  document.getElementById('statusBar').innerHTML = html;
+}
+
+function sleep(ms) {
+  return new Promise(r => setTimeout(r, ms));
+}
+
+function timestamp() {
+  const d = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}_`
+       + `${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+}
+
+function downloadBlob(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const a   = document.createElement('a');
+  a.href = url; a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+/* ════════════════════════════════════════════════════════════════
+   Modal
+════════════════════════════════════════════════════════════════ */
+function showModal(total, files, rows) {
+  document.getElementById('mTotal').textContent  = fmt(total);
+  document.getElementById('mFiles').textContent  = fmt(files);
+  document.getElementById('mRows').textContent   = fmt(rows);
+  document.getElementById('mOutput').textContent = 'ZIP downloaded ✓';
+  document.getElementById('overlay').classList.add('show');
+}
+
+function closeModal(e) {
+  if (!e || e.target === document.getElementById('overlay')) {
+    document.getElementById('overlay').classList.remove('show');
+  }
+}
+
+// Init
+updateSummary();
+</script>
+</body>
+</html>
